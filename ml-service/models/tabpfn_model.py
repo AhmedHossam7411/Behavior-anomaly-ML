@@ -65,7 +65,11 @@ class MLModel:
                 row = []
 
                 for feature in self.feature_names:
-                    value = item.get(feature, 0)
+                    camel_feature = feature[0].lower() + feature[1:]
+                    
+                    value = item.get(feature)
+                    if value is None:
+                        value = item.get(camel_feature, 0)
 
                     # 🔥 SAFE conversion (prevents crashes)
                     try:

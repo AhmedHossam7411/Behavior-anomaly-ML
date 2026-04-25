@@ -22,6 +22,12 @@ def predict(request: PredictionRequest, req: Request):
     model = req.app.state.model
     data = request.data
 
+    # 🔄 Unwrap nested .NET wrapper if present (e.g., [{'Data': [...]}] )
+    if data and isinstance(data, list) and isinstance(data[0], dict):
+        nested = data[0].get("Data") or data[0].get("data")
+        if isinstance(nested, list) and len(nested) > 0:
+            data = nested
+
     # 🔒 validation
     if not data or not isinstance(data, list):
         return {"error": "Invalid input"}
@@ -41,9 +47,13 @@ def predict(request: PredictionRequest, req: Request):
     features = {}
 
     if isinstance(data[0], dict):
-        user_id = data[0].get("UserId")
-        session_id = data[0].get("SessionId")
+        user_id = data[0].get("UserId") or data[0].get("userId")
+        session_id = data[0].get("SessionId") or data[0].get("sessionId")
         features = data[0]
+        
+        with open("debug_log.txt", "a") as f:
+            f.write(f"Received payload: {data}\n")
+            f.write(f"Extracted UserID: {user_id}, SessionID: {session_id}\n\n")
 
     # 🔥 ANALYSIS
     try:
@@ -69,8 +79,8 @@ def predict(request: PredictionRequest, req: Request):
             "riskLevel": "UNKNOWN",
             "reason": "Analysis service unavailable",
              "context": {
-        "page": features.get("CurrentPage"),
-        "stage": features.get("Context")
+        "page": features.get("CurrentPage") or features.get("currentPage"),
+        "stage": features.get("Context") or features.get("context")
         }
     }
 
