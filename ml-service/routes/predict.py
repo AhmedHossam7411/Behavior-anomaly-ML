@@ -124,13 +124,28 @@ def predict(request: PredictionRequest, req: Request):
             f.write(f"Received payload: {data}\n")
             f.write(f"Extracted UserID: {user_id}, SessionID: {session_id}\n\n")
 
-    # TabPFN verdict
-    tabpfn_label   = "Anomaly" if confidence >= 0.5 else "Normal"
-    tabpfn_verdict = (
-        "Behavioral pattern classified as anomalous by TabPFN"
-        if confidence >= 0.5
-        else "Behavioral pattern classified as normal by TabPFN"
-    )
+    # TabPFN verdict — include the strongest signal in the verdict text
+    tabpfn_label = "Anomaly" if confidence >= 0.5 else "Normal"
+
+    std_mouse = _get(features, "StdMouseSpeed", "stdMouseSpeed", default=999)
+    unauth    = _get(features, "UnauthorizedAttempts", "unauthorizedAttempts")
+    dt_count  = _get(features, "DevToolsShortcutCount", "devToolsShortcutCount")
+    hacking   = _get(features, "HackingStringDetected", "hackingStringDetected")
+
+    if tabpfn_label == "Anomaly":
+        if std_mouse < 0.05:
+            tabpfn_verdict = (f"Anomaly detected: StdMouseSpeed={std_mouse:.3f} — near-zero mouse variance "
+                              f"is physically impossible for a human. Robotic movement pattern confirmed.")
+        elif hacking == 1:
+            tabpfn_verdict = "Anomaly detected: attack string present in behavioral snapshot."
+        elif unauth > 2:
+            tabpfn_verdict = f"Anomaly detected: {int(unauth)} unauthorized navigation attempts indicate security evasion."
+        elif dt_count > 3:
+            tabpfn_verdict = f"Anomaly detected: {int(dt_count)} DevTools shortcut keypresses — active session inspection."
+        else:
+            tabpfn_verdict = f"Anomaly detected: behavioral features deviate significantly from normal baseline (score={confidence:.0%})."
+    else:
+        tabpfn_verdict = "Behavioral pattern within normal human parameters — no anomaly detected."
 
     # Groq analysis — called whenever TabPFN flags an anomaly (>= 0.5)
     try:

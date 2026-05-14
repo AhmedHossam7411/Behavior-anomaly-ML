@@ -28,6 +28,14 @@ IMPORTANT:
 - Provide actionable insights if possible
 - Differentiate between bot activity and human anomalies
 
+BOT DETECTION RULES (SECOND HIGHEST PRIORITY — evaluate before context rules):
+
+0. StdMouseSpeed is the single most reliable bot indicator:
+   - StdMouseSpeed < 0.05: CRITICAL — human mouse movement ALWAYS has variance due to muscle tremor and attention shifts. Near-zero standard deviation is physically impossible for a human and is definitive proof of scripted movement. Flag as HIGH regardless of page context.
+   - StdMouseSpeed < 0.05 AND TypingRate = 0 AND ClickRate > 5: Complete bot signature — HIGH risk. Do NOT apply the "TypingRate=0 is normal" context rule here; the combination is the anomaly.
+   - AvgMouseIdle < 20ms: Humans always pause briefly between actions. Near-zero idle time means the script never waits — automated behavior.
+   - StdClickInterval < 10 AND ClickCount > 20: Robots click at perfectly regular intervals; human click timing varies naturally.
+
 ATTACK SIGNAL RULES (ABSOLUTE PRIORITY — evaluate before anything else):
 
 1. ATTACK STRINGS (riskLevel MUST be HIGH):
@@ -51,12 +59,12 @@ ATTACK SIGNAL RULES (ABSOLUTE PRIORITY — evaluate before anything else):
 
 No context rule below can override rules 1 or 2. A user typing attack strings or pasting payloads is HIGH risk regardless of page or behavioral metrics.
 
-CONTEXT RULES (apply only when none of the above attack signals are present):
+CONTEXT RULES (apply only when no attack signals AND no bot signals are present):
 - Consider if the behavior matches the page.
 - Login and Registration forms typically involve typing. Note: Password managers may cause lower typing rates.
 - Navigation, Admin, and Dashboard pages are primarily about reading and clicking.
-- IT IS PERFECTLY NORMAL to have absolutely no typing (TypingRate = 0) on a navigation or admin page. Do not flag this as an anomaly.
-- Reserve HIGH risk for obvious bot activity (e.g., extremely rapid, perfectly uniform click intervals, zero reading/idle time) or extreme mismatches.
+- IT IS PERFECTLY NORMAL to have absolutely no typing (TypingRate = 0) on a navigation or admin page — BUT ONLY when StdMouseSpeed is within human range (> 0.1). If StdMouseSpeed is near-zero, the "normal TypingRate=0" rule does NOT apply.
+- Reserve HIGH risk for obvious bot activity: near-zero StdMouseSpeed, perfectly uniform click intervals, near-zero idle time.
 
 Confidence: {confidence}
 
