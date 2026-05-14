@@ -21,7 +21,14 @@ class MLModel:
             "KeyEventCount",
             "TypingRate",
             "ClickRate",
-            "MouseMoveRate"
+            "MouseMoveRate",
+            "HackingStringDetected",      # 1 = attack string typed/in URL
+            "PasteCount",                 # pastes in this window
+            "SuspiciousPasteDetected",    # 1 = pasted content matched attack pattern
+            "DevToolsShortcutCount",      # F12/Ctrl+Shift+I/Ctrl+U presses
+            "AbnormalInputDetected",      # 1 = input exceeded 500 chars
+            "DevToolsDetected",           # 1 = window dimensions suggest DevTools open
+            "UnauthorizedAttempts",       # challenge bypass navigation attempts
         ]
 
         X = df[self.feature_names].values
@@ -33,10 +40,21 @@ class MLModel:
         y = []
 
         for _, row in df.iterrows():
+            # Hard anomaly signals — any one of these = definitive malicious intent
             if (
+                row.get("HackingStringDetected", 0) == 1 or
+                row.get("SuspiciousPasteDetected", 0) == 1 or
+                row.get("AbnormalInputDetected", 0) == 1 or
+                row.get("UnauthorizedAttempts", 0) > 2
+            ):
+                y.append(1)
+            # Soft anomaly signals — behavioral outliers or tool-use patterns
+            elif (
                 row["TypingRate"] > df["TypingRate"].mean() * 1.5 or
                 row["MouseMoveRate"] < df["MouseMoveRate"].mean() * 0.5 or
-                row["ClickRate"] > df["ClickRate"].mean() * 2
+                row["ClickRate"] > df["ClickRate"].mean() * 2 or
+                row.get("DevToolsShortcutCount", 0) > 3 or
+                (row.get("DevToolsDetected", 0) == 1 and row.get("DevToolsShortcutCount", 0) > 0)
             ):
                 y.append(1)
             else:
