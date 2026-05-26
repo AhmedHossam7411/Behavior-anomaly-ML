@@ -21,7 +21,7 @@ from datetime import datetime, timedelta
 np.random.seed(42)
 random.seed(42)
 
-# ── DB connection ─────────────────────────────────────────────────────────────
+
 conn = pyodbc.connect(
     "DRIVER={ODBC Driver 17 for SQL Server};"
     "SERVER=localhost\\SQLEXPRESS;"
@@ -30,7 +30,7 @@ conn = pyodbc.connect(
 )
 cursor = conn.cursor()
 
-# ── Reference data ────────────────────────────────────────────────────────────
+
 PAGES     = ['/departments', '/tasks', '/documents', '/admin', '/login']
 CONTEXTS  = ['postAuth', 'preAuth']
 UAS       = [
@@ -88,7 +88,7 @@ def fp(lo, hi, dp=4): return round(float(np.random.uniform(lo, hi)), dp)
 def ri(lo, hi):       return int(np.random.randint(lo, hi + 1))
 
 
-# ── Row builders ──────────────────────────────────────────────────────────────
+
 
 def normal_row(idx):
     """
@@ -249,7 +249,7 @@ def mixed_row():
     )
 
 
-# ── Insert rows ───────────────────────────────────────────────────────────────
+
 
 print("Seeding BehaviorWindows...\n")
 

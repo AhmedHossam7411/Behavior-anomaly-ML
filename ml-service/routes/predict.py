@@ -91,26 +91,26 @@ def predict(request: PredictionRequest, req: Request):
     model = req.app.state.model
     data = request.data
 
-    # 🔄 Unwrap nested .NET wrapper if present (e.g., [{'Data': [...]}] )
+    # Unwrap nested .NET wrapper if present (e.g., [{'Data': [...]}] )
     if data and isinstance(data, list) and isinstance(data[0], dict):
         nested = data[0].get("Data") or data[0].get("data")
         if isinstance(nested, list) and len(nested) > 0:
             data = nested
 
-    # 🔒 validation
+    # Validate input
     if not data or not isinstance(data, list):
         return {"error": "Invalid input"}
 
-    # 🔥 ML prediction (RAW)
+    # ML prediction
     result = model.predict(data)[0]
 
 
-    # 🔥 IMPORTANT: calibrate confidence
+    # calibrate confidence
     raw_confidence = result["confidence"]
     confidence = calibrate_confidence(raw_confidence)
 
 
-    # 🔥 metadata
+    # extract metadata
     user_id = None
     session_id = None
     features = {}
@@ -165,7 +165,6 @@ def predict(request: PredictionRequest, req: Request):
         print("GROQ ERROR:", e)
         analysis = _rule_based_analysis(confidence, features)
 
-    # Save to DB
     try:
         save_prediction(
             user_id=user_id,
