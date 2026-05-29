@@ -1,5 +1,6 @@
 from tabpfn import TabPFNClassifier
 import numpy as np
+from sklearn.model_selection import train_test_split
 from app.db import get_data
 
 class MLModel:
@@ -33,6 +34,10 @@ class MLModel:
 
         X = df[self.feature_names].values
         y = self.generate_labels(df)
+
+        # Cap at 50 with stratified sampling so both classes are always represented
+        if len(X) > 50:
+            X, _, y, _ = train_test_split(X, y, train_size=50, stratify=y, random_state=42)
 
         self.model.fit(X, y)
 

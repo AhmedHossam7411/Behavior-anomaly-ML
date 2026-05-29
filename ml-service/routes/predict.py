@@ -1,3 +1,4 @@
+import threading
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from app.save_prediction import save_prediction
@@ -26,10 +27,6 @@ def _get(d, *keys, default=0):
 
 
 def _rule_based_analysis(confidence: float, features: dict) -> dict:
-    """
-    Derives a risk level and human-readable reason purely from feature values.
-    Used when Groq is unavailable so the demo always shows meaningful output.
-    """
     hacking   = _get(features, "HackingStringDetected",  "hackingStringDetected")
     sus_paste = _get(features, "SuspiciousPasteDetected","suspiciousPasteDetected")
     abnormal  = _get(features, "AbnormalInputDetected",  "abnormalInputDetected")
@@ -59,7 +56,7 @@ def _rule_based_analysis(confidence: float, features: dict) -> dict:
         risk = "HIGH"
     if dt_open == 1 and dt_count > 3:
         signals.append(f"DevTools open with {int(dt_count)} shortcut keypresses — active session inspection suspected")
-        risk = max(risk, "HIGH") if risk == "HIGH" else "HIGH"
+        risk = "HIGH"
     elif dt_open == 1 and dt_count > 0:
         signals.append(f"DevTools detected via viewport dimensions with {int(dt_count)} shortcut(s)")
         if risk == "LOW":
@@ -91,26 +88,20 @@ def predict(request: PredictionRequest, req: Request):
     model = req.app.state.model
     data = request.data
 
-    # Unwrap nested .NET wrapper if present (e.g., [{'Data': [...]}] )
+    # Unwrap nested .NET wrapper if present
     if data and isinstance(data, list) and isinstance(data[0], dict):
         nested = data[0].get("Data") or data[0].get("data")
         if isinstance(nested, list) and len(nested) > 0:
             data = nested
 
-    # Validate input
     if not data or not isinstance(data, list):
         return {"error": "Invalid input"}
 
-    # ML prediction
     result = model.predict(data)[0]
 
-
-    # calibrate confidence
     raw_confidence = result["confidence"]
     confidence = calibrate_confidence(raw_confidence)
 
-
-    # extract metadata
     user_id = None
     session_id = None
     features = {}
@@ -119,12 +110,7 @@ def predict(request: PredictionRequest, req: Request):
         user_id = data[0].get("UserId") or data[0].get("userId")
         session_id = data[0].get("SessionId") or data[0].get("sessionId")
         features = data[0]
-        
-        with open("debug_log.txt", "a") as f:
-            f.write(f"Received payload: {data}\n")
-            f.write(f"Extracted UserID: {user_id}, SessionID: {session_id}\n\n")
 
-    # TabPFN verdict — include the strongest signal in the verdict text
     tabpfn_label = "Anomaly" if confidence >= 0.5 else "Normal"
 
     std_mouse = _get(features, "StdMouseSpeed", "stdMouseSpeed", default=999)
@@ -147,7 +133,6 @@ def predict(request: PredictionRequest, req: Request):
     else:
         tabpfn_verdict = "Behavioral pattern within normal human parameters — no anomaly detected."
 
-    # Groq analysis — called whenever TabPFN flags an anomaly (>= 0.5)
     try:
         if confidence >= 0.5:
             analysis = analyze_behavior(confidence=confidence, features=features)
@@ -165,17 +150,26 @@ def predict(request: PredictionRequest, req: Request):
         print("GROQ ERROR:", e)
         analysis = _rule_based_analysis(confidence, features)
 
-    try:
-        save_prediction(
-            user_id=user_id,
-            session_id=session_id,
-            prediction_label=tabpfn_label,
-            confidence_score=confidence,
-            risk_level=analysis.get("riskLevel"),
-            analysis_reason=analysis.get("reason")
-        )
-    except Exception as e:
-        print("DB ERROR:", e)
+    # If rule-based signals are definitively HIGH, don't let Groq downgrade them
+    if analysis.get("riskLevel") != "HIGH":
+        rule = _rule_based_analysis(confidence, features)
+        if rule.get("riskLevel") == "HIGH":
+            analysis["riskLevel"] = "HIGH"
+
+    def _save():
+        try:
+            save_prediction(
+                user_id=user_id,
+                session_id=session_id,
+                prediction_label=tabpfn_label,
+                confidence_score=confidence,
+                risk_level=analysis.get("riskLevel"),
+                analysis_reason=analysis.get("reason")
+            )
+        except Exception as e:
+            print("DB ERROR:", e)
+
+    threading.Thread(target=_save, daemon=True).start()
 
     return {
         "confidence": confidence,

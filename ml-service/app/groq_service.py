@@ -1,9 +1,9 @@
 import json
 import re
+import threading
 from groq import Groq
 from app.config import GROQ_API_KEY
 
-# Initialize Groq client
 client = Groq(api_key=GROQ_API_KEY)
 
 
@@ -50,9 +50,9 @@ ATTACK SIGNAL RULES (ABSOLUTE PRIORITY — evaluate before anything else):
    - DevToolsDetected = 1 AND DevToolsShortcutCount > 0: DevTools is open and was opened via shortcut — suspicious in a production government app. MEDIUM risk alone, HIGH if combined with other signals.
    - DevToolsDetected = 1 alone: could be a developer — flag as LOW/MEDIUM only.
 
-4. CHALLENGE BYPASS ATTEMPTS (HIGH risk):
-   - UnauthorizedAttempts > 2: user repeatedly tried to navigate past an active security challenge — clear evasion behavior.
-   - UnauthorizedAttempts > 0: flag as MEDIUM, note the bypass attempts.
+4. CHALLENGE BYPASS ATTEMPTS (HIGH risk — no exceptions):
+   - UnauthorizedAttempts > 2: user repeatedly tried to navigate past an active security challenge. This IS evasion. riskLevel MUST be HIGH regardless of any other signal.
+   - UnauthorizedAttempts > 0 but <= 2: flag as MEDIUM.
 
 5. PASTE BEHAVIOR (factor in context):
    - PasteCount > 5 in a 30-second window: unusually high paste frequency — possible automated or scripted input.
@@ -78,17 +78,28 @@ Respond ONLY in JSON. Choose riskLevel from "LOW", "MEDIUM", or "HIGH":
 }}
 """
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.3
-    )
+    result_holder = [None]
+    error_holder = [None]
 
-    content = response.choices[0].message.content
+    def call_groq():
+        try:
+            result_holder[0] = client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3
+            )
+        except Exception as e:
+            error_holder[0] = e
 
-    # Safe JSON extraction
+    thread = threading.Thread(target=call_groq, daemon=True)
+    thread.start()
+    thread.join(timeout=8)
+
+    if thread.is_alive() or error_holder[0]:
+        raise TimeoutError("Groq did not respond in time")
+
+    content = result_holder[0].choices[0].message.content
+
     try:
         json_str = re.search(r"\{.*\}", content, re.DOTALL).group()
         return json.loads(json_str)
