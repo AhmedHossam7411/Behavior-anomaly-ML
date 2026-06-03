@@ -6,7 +6,6 @@ from app.config import GROQ_API_KEY
 
 client = Groq(api_key=GROQ_API_KEY)
 
-
 def analyze_behavior(confidence, features, context=None):
     context_str = json.dumps({
         "page":  features.get("CurrentPage")  or features.get("currentPage"),

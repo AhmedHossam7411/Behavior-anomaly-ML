@@ -40,7 +40,6 @@ def get_data():
     df = pd.read_sql(query, conn)
     conn.close()
 
-    # Fill NULLs with 0 — older rows may lack newer columns added via migrations
     df = df.fillna(0)
 
     return df

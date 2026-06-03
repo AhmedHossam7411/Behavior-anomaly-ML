@@ -1,11 +1,9 @@
-"""Render the headline evaluation results as a clean PNG table for the dissertation."""
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 OUT = "evaluation_results/results_tables.png"
 
-# ── Table 1: Configuration comparison (the headline) ──────────────────────────
 config_cols = ["Configuration", "Accuracy", "F1 (Anomaly)", "Macro-F1", "ROC-AUC"]
 config_rows = [
     ["Rules-only baseline", "0.474", "0.470", "0.474", "—"],
@@ -13,7 +11,6 @@ config_rows = [
     ["Hybrid (deployed)",   "0.940", "0.961", "0.914", "0.988"],
 ]
 
-# ── Table 2: Feature-layer comparison ─────────────────────────────────────────
 layer_cols = ["Feature set", "# feat", "Accuracy", "Precision (Anom)",
               "Recall (Anom)", "F1 (Anom)", "ROC-AUC"]
 layer_rows = [
@@ -35,10 +32,10 @@ def style_table(ax, cols, rows, title, highlight_row=None):
     t.set_fontsize(10)
     t.scale(1, 1.6)
     for (r, c), cell in t.get_celldata().items() if hasattr(t, "get_celldata") else t.get_celld().items():
-        if r == 0:                                  # header
+        if r == 0:
             cell.set_facecolor("#2c3e50"); cell.set_text_props(color="white", fontweight="bold")
         elif highlight_row is not None and r == highlight_row:
-            cell.set_facecolor("#d5f5e3"); cell.set_text_props(fontweight="bold")  # green highlight
+            cell.set_facecolor("#d5f5e3"); cell.set_text_props(fontweight="bold")
         elif r % 2 == 0:
             cell.set_facecolor("#f4f6f7")
         cell.set_edgecolor("#bdc3c7")

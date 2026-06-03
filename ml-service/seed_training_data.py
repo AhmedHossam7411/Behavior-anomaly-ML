@@ -1,16 +1,3 @@
-"""
-Seed script for BehaviorWindows training data.
-
-Inserts synthetic rows covering three user types so TabPFN has
-labelled examples for all scenarios:
-  - Normal human   : varied biometrics, all attack signals = 0  -> label 0
-  - Bot            : near-zero StdMouseSpeed, high uniform ClickRate -> label 1
-  - Malicious user : human-like biometrics + attack signals set  -> label 1
-  - Mixed          : bot pattern AND attack signals combined      -> label 1
-
-Run once AFTER deleting old rows, then restart the Python ML service
-so TabPFN retrains on the clean data.
-"""
 
 import pyodbc
 import numpy as np
@@ -21,7 +8,6 @@ from datetime import datetime, timedelta
 np.random.seed(42)
 random.seed(42)
 
-
 conn = pyodbc.connect(
     "DRIVER={ODBC Driver 17 for SQL Server};"
     "SERVER=localhost\\SQLEXPRESS;"
@@ -29,7 +15,6 @@ conn = pyodbc.connect(
     "Trusted_Connection=yes;"
 )
 cursor = conn.cursor()
-
 
 PAGES     = ['/departments', '/tasks', '/documents', '/admin', '/login']
 CONTEXTS  = ['postAuth', 'preAuth']
@@ -87,63 +72,45 @@ def ts():
 def fp(lo, hi, dp=4): return round(float(np.random.uniform(lo, hi)), dp)
 def ri(lo, hi):       return int(np.random.randint(lo, hi + 1))
 
-
-
-
 def normal_row(idx):
-    """
-    Realistic human: HIGH StdMouseSpeed (humans vary), moderate rates,
-    all attack signals = 0. idx seeds slight variation per "user".
-    """
     np.random.seed(idx * 7 + 1)
     return (
         str(uuid.uuid4()), random.choice(PAGES),
         f'user-{idx % 6 + 1}', ts(),
-        fp(0.5, 3.0),   fp(0.20, 0.90),  ri(20, 130),  # mouse speed/std/count
-        fp(50, 800),    fp(20, 200),                    # idle avg/std
-        fp(80, 250),    fp(20, 80),       ri(2, 20),    # click dur avg/std/count
-        fp(2000, 20000),fp(500, 5000),                  # click interval avg/std
-        fp(80, 300),    fp(20, 80),                     # dwell avg/std
-        fp(150, 800),   fp(50, 200),      ri(5, 80),    # flight avg/std / keycount
-        fp(0.1, 2.5),   'postAuth',                     # typingRate / context
-        fp(0.05, 0.50), fp(0.5, 5.0),                   # clickRate / mouseMoveRate
-        fp(0.5, 2.5),   fp(0.1, 0.8),                   # preClickSpeed avg/std
+        fp(0.5, 3.0),   fp(0.20, 0.90),  ri(20, 130),
+        fp(50, 800),    fp(20, 200),
+        fp(80, 250),    fp(20, 80),       ri(2, 20),
+        fp(2000, 20000),fp(500, 5000),
+        fp(80, 300),    fp(20, 80),
+        fp(150, 800),   fp(50, 200),      ri(5, 80),
+        fp(0.1, 2.5),   'postAuth',
+        fp(0.05, 0.50), fp(0.5, 5.0),
+        fp(0.5, 2.5),   fp(0.1, 0.8),
         random.choice(UAS), 'en-US',
         random.choice(RESOLUTIONS), random.choice(TIMEZONES),
         random.choice(PLATFORMS), ri(4, 16),
-        0, None, 0, 0, 0, 0, 0, 0                       # all attack signals = 0
+        0, None, 0, 0, 0, 0, 0, 0
     )
 
-
 def bot_row():
-    """
-    Robotic pattern: near-zero StdMouseSpeed (no human variance),
-    TypingRate = 0, very uniform high ClickRate — all attack signals = 0.
-    """
     return (
         str(uuid.uuid4()), random.choice(['/departments', '/admin', '/tasks']),
         f'bot-{ri(1000, 9999)}', ts(),
-        fp(2.3, 2.7),   fp(0.005, 0.030), ri(100, 200), # fast, NEAR-ZERO std, high count
-        fp(8, 15),      fp(0.5, 2.0),                    # very short idle, near-zero std
-        fp(48, 52),     fp(1.0, 3.0),     ri(80, 150),   # very uniform click duration
-        fp(195, 205),   fp(2.0, 5.0),                    # very uniform interval
-        fp(1.8, 2.2),   fp(0.1, 0.3),                    # near-constant dwell
-        fp(1.8, 2.2),   fp(0.1, 0.3),    0,              # near-constant flight, 0 keys
-        0.0,            'postAuth',                      # no typing
-        fp(10, 15),     fp(18, 25),                      # high uniform click/move rate
-        fp(2.3, 2.6),   fp(0.01, 0.05),                  # preClickSpeed near-zero std
-        'python-requests/2.31.0', 'en-US',               # tool user-agent
+        fp(2.3, 2.7),   fp(0.005, 0.030), ri(100, 200),
+        fp(8, 15),      fp(0.5, 2.0),
+        fp(48, 52),     fp(1.0, 3.0),     ri(80, 150),
+        fp(195, 205),   fp(2.0, 5.0),
+        fp(1.8, 2.2),   fp(0.1, 0.3),
+        fp(1.8, 2.2),   fp(0.1, 0.3),    0,
+        0.0,            'postAuth',
+        fp(10, 15),     fp(18, 25),
+        fp(2.3, 2.6),   fp(0.01, 0.05),
+        'python-requests/2.31.0', 'en-US',
         '1920x1080', 'UTC', 'Win32', 4,
-        0, None, 0, 0, 0, 0, 0, 0                        # all attack signals = 0
+        0, None, 0, 0, 0, 0, 0, 0
     )
 
-
 def malicious_row(attack_type):
-    """
-    Human-like biometrics but with attack signals set based on attack type.
-    TabPFN needs to learn that normal-looking behavior + HackingStringDetected=1
-    is still anomalous.
-    """
     hacking = suspicious_paste = abnormal_input = devtools_detected = 0
     paste_count = devtools_shortcuts = unauthorized = 0
     detected_patterns = None
@@ -200,15 +167,15 @@ def malicious_row(attack_type):
         str(uuid.uuid4()),
         random.choice(['/admin', '/departments', '/tasks']),
         f'attacker-{ri(100, 999)}', ts(),
-        fp(0.8, 2.5),   fp(0.3, 0.7),    ri(20, 100),   # human-like mouse
-        fp(60, 600),    fp(20, 150),                     # idle
-        fp(90, 220),    fp(25, 70),       ri(3, 25),     # click
-        fp(3000, 18000),fp(600, 4000),                   # interval
-        fp(90, 280),    fp(25, 75),                      # dwell
-        fp(160, 750),   fp(55, 190),      ri(10, 60),    # flight / keycount
-        fp(0.2, 2.0),   'postAuth',                      # typing
-        fp(0.1, 0.45),  fp(0.6, 4.5),                   # click/move rate
-        fp(0.6, 2.2),   fp(0.1, 0.7),                   # preClick
+        fp(0.8, 2.5),   fp(0.3, 0.7),    ri(20, 100),
+        fp(60, 600),    fp(20, 150),
+        fp(90, 220),    fp(25, 70),       ri(3, 25),
+        fp(3000, 18000),fp(600, 4000),
+        fp(90, 280),    fp(25, 75),
+        fp(160, 750),   fp(55, 190),      ri(10, 60),
+        fp(0.2, 2.0),   'postAuth',
+        fp(0.1, 0.45),  fp(0.6, 4.5),
+        fp(0.6, 2.2),   fp(0.1, 0.7),
         random.choice(UAS), 'en-US',
         random.choice(RESOLUTIONS), random.choice(TIMEZONES),
         random.choice(PLATFORMS), ri(4, 16),
@@ -218,59 +185,47 @@ def malicious_row(attack_type):
         devtools_detected, unauthorized
     )
 
-
 def mixed_row():
-    """
-    Bot-like movement pattern PLUS attack signals — most suspicious combination.
-    TabPFN should strongly associate this with label=1.
-    """
     return (
         str(uuid.uuid4()), '/admin',
         f'suspect-{ri(1, 99)}', ts(),
-        fp(2.0, 2.6),   fp(0.02, 0.10),  ri(80, 160),  # somewhat bot-like
-        fp(10, 30),     fp(2, 8),                       # low idle
-        fp(48, 55),     fp(2, 6),        ri(50, 120),   # uniform clicks
-        fp(195, 215),   fp(3, 10),                      # uniform interval
-        fp(2, 5),       fp(0.2, 0.5),                   # dwell
-        fp(2, 5),       fp(0.2, 0.5),    ri(0, 10),     # flight
-        fp(0, 0.3),     'postAuth',                     # low typing
-        fp(8, 14),      fp(15, 22),                     # high click/move rate
-        fp(2.0, 2.5),   fp(0.02, 0.08),                 # preClick
+        fp(2.0, 2.6),   fp(0.02, 0.10),  ri(80, 160),
+        fp(10, 30),     fp(2, 8),
+        fp(48, 55),     fp(2, 6),        ri(50, 120),
+        fp(195, 215),   fp(3, 10),
+        fp(2, 5),       fp(0.2, 0.5),
+        fp(2, 5),       fp(0.2, 0.5),    ri(0, 10),
+        fp(0, 0.3),     'postAuth',
+        fp(8, 14),      fp(15, 22),
+        fp(2.0, 2.5),   fp(0.02, 0.08),
         random.choice(UAS), 'en-US',
         '1920x1080', 'UTC', 'Win32', 4,
-        1,                              # HackingStringDetected
-        random.choice(ATTACK_PATTERNS), # DetectedPatterns
-        ri(2, 6),                       # PasteCount
-        1,                              # SuspiciousPasteDetected
-        ri(3, 8),                       # DevToolsShortcutCount
-        random.randint(0, 1),           # AbnormalInputDetected
-        1,                              # DevToolsDetected
-        ri(2, 6)                        # UnauthorizedAttempts
+        1,
+        random.choice(ATTACK_PATTERNS),
+        ri(2, 6),
+        1,
+        ri(3, 8),
+        random.randint(0, 1),
+        1,
+        ri(2, 6)
     )
-
-
-
 
 print("Seeding BehaviorWindows...\n")
 
-# 35 normal users
 for i in range(35):
     cursor.execute(INSERT_SQL, normal_row(i))
 print("  ✓  35  normal human rows")
 
-# 20 bots
 for _ in range(20):
     cursor.execute(INSERT_SQL, bot_row())
 print("  ✓  20  bot rows")
 
-# 21 malicious users (3 per attack type × 7 types)
 ATTACK_TYPES = ['sql', 'xss', 'paste', 'command', 'path', 'devtools', 'probe']
 for at in ATTACK_TYPES:
     for _ in range(3):
         cursor.execute(INSERT_SQL, malicious_row(at))
 print(f"  ✓  21  malicious user rows  ({len(ATTACK_TYPES)} attack types × 3)")
 
-# 10 mixed (bot pattern + attack signals)
 for _ in range(10):
     cursor.execute(INSERT_SQL, mixed_row())
 print("  ✓  10  mixed rows  (bot behavior + attack signals)\n")

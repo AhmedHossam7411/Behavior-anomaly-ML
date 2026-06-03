@@ -6,14 +6,11 @@ from app.groq_service import analyze_behavior
 
 router = APIRouter()
 
-
 class PredictionRequest(BaseModel):
     data: list
 
-
 def calibrate_confidence(prob):
     return float(max(0.05, min(0.95, prob)))
-
 
 def _get(d, *keys, default=0):
     for k in keys:
@@ -24,7 +21,6 @@ def _get(d, *keys, default=0):
             except (ValueError, TypeError):
                 pass
     return float(default)
-
 
 def _rule_based_analysis(confidence: float, features: dict) -> dict:
     hacking   = _get(features, "HackingStringDetected",  "hackingStringDetected")
@@ -54,7 +50,7 @@ def _rule_based_analysis(confidence: float, features: dict) -> dict:
     if unauth > 2:
         signals.append(f"UnauthorizedAttempts = {int(unauth)} — repeated security challenge bypass attempts")
         risk = "HIGH"
-    if dt_open == 1 and dt_count > 3:
+    if dt_open == 1 or dt_count >= 1:
         signals.append(f"DevTools open with {int(dt_count)} shortcut keypresses — active session inspection suspected")
         risk = "HIGH"
     elif dt_open == 1 and dt_count > 0:
@@ -82,13 +78,11 @@ def _rule_based_analysis(confidence: float, features: dict) -> dict:
     reason = ". ".join(s.capitalize() for s in signals) + "."
     return {"riskLevel": risk, "reason": reason}
 
-
 @router.post("/predict")
 def predict(request: PredictionRequest, req: Request):
     model = req.app.state.model
     data = request.data
 
-    # Unwrap nested .NET wrapper if present
     if data and isinstance(data, list) and isinstance(data[0], dict):
         nested = data[0].get("Data") or data[0].get("data")
         if isinstance(nested, list) and len(nested) > 0:
@@ -150,7 +144,6 @@ def predict(request: PredictionRequest, req: Request):
         print("GROQ ERROR:", e)
         analysis = _rule_based_analysis(confidence, features)
 
-    # If rule-based signals are definitively HIGH, don't let Groq downgrade them
     if analysis.get("riskLevel") != "HIGH":
         rule = _rule_based_analysis(confidence, features)
         if rule.get("riskLevel") == "HIGH":

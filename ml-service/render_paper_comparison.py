@@ -1,9 +1,3 @@
-"""Render the 70/30 full-metric-suite table, its bar graph, and a literature
-comparison against the reference papers — for the dissertation evaluation chapter.
-
-Numbers are the 533-row, 70% train / 30% test (stratified, seed 42) results.
-Test set: n=160, 21 anomalies / 139 normal.
-"""
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -11,12 +5,8 @@ import numpy as np
 
 OUTDIR = "evaluation_results"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Our results: 533 rows, 70/30 split, test n=160 (21 anomaly / 139 normal)
-# ─────────────────────────────────────────────────────────────────────────────
 MODELS = ["Behavioural-only", "Attack-signal-only", "Combined (deployed)"]
 
-# metric name -> [beh, atk, combined]
 METRICS = [
     ("Accuracy",                  [0.919, 0.969, 0.988]),
     ("Precision (PPV)",           [0.900, 1.000, 0.952]),
@@ -32,19 +22,15 @@ METRICS = [
     ("FNR",                       [0.571, 0.238, 0.048]),
     ("ROC-AUC",                   [0.952, 0.962, 1.000]),
     ("PR-AUC (AP)",               [0.770, 0.897, 0.998]),
-    ("EER",                       [0.1016, 0.0728, 0.0036]),  # equal error rate (lower=better)
+    ("EER",                       [0.1016, 0.0728, 0.0036]),
 ]
 
-# confusion matrices (test set): TP, FN, FP, TN
 CM = {
     "Behavioural-only":   (9, 12, 1, 138),
     "Attack-signal-only": (16, 5, 0, 139),
     "Combined (deployed)":(20, 1, 1, 138),
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Shared table styler (matches render_tables.py)
-# ─────────────────────────────────────────────────────────────────────────────
 def style_table(ax, cols, rows, title, highlight_col=None, first_col_left=True):
     ax.axis("off")
     if title:
@@ -65,10 +51,6 @@ def style_table(ax, cols, rows, title, highlight_col=None, first_col_left=True):
         if first_col_left and c == 0 and r != 0:
             cell.set_text_props(ha="left"); cell.PAD = 0.04
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# FIGURE 1 — full metric suite table (+ EER) + confusion matrices
-# ─────────────────────────────────────────────────────────────────────────────
 def fig_table():
     fig, (ax1, ax2) = plt.subplots(
         2, 1, figsize=(8.5, 8.2), gridspec_kw={"height_ratios": [5, 1]})
@@ -94,16 +76,12 @@ def fig_table():
     plt.savefig(out, dpi=200, bbox_inches="tight"); plt.close()
     print("wrote", out)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# FIGURE 2 — grouped bar graph of the headline metrics
-# ─────────────────────────────────────────────────────────────────────────────
 def fig_graph():
     bar_metrics = ["Accuracy", "Precision (PPV)", "Recall / Sensitivity (TPR)",
                    "F1-score", "Balanced accuracy", "MCC", "ROC-AUC"]
     short = ["Accuracy", "Precision", "Recall", "F1", "Bal. Acc", "MCC", "ROC-AUC"]
     lookup = {n: v for n, v in METRICS}
-    data = np.array([lookup[m] for m in bar_metrics])  # rows=metrics, cols=models
+    data = np.array([lookup[m] for m in bar_metrics])
 
     x = np.arange(len(bar_metrics)); w = 0.26
     colors = ["#95a5a6", "#e67e22", "#27ae60"]
@@ -125,13 +103,7 @@ def fig_graph():
     plt.savefig(out, dpi=200, bbox_inches="tight"); plt.close()
     print("wrote", out)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# FIGURE 3 — literature comparison (reference-paper reported values)
-# Only verified, cleanly-attributed numbers are charted.
-# ─────────────────────────────────────────────────────────────────────────────
 def fig_literature():
-    # (label, modality, task, reported headline metric + value)
     lit_rows = [
         ["[2] BehaveFormer (transformer)", "Keystroke+IMU", "Authentication", "EER 1.80% (Aalto) / 2.95% (HuMIdb)"],
         ["[5] keyRecs benchmark (LGBM)", "Keystroke", "Authentication", "F1 0.80 ; lowest EER/FRR"],
@@ -149,12 +121,10 @@ def fig_literature():
 
     ax_tbl = fig.add_subplot(gs[0, :])
     style_table(ax_tbl, lit_cols, lit_rows, "")
-    # highlight the THIS WORK row
     for (r, c), cell in ax_tbl.tables[0].get_celld().items():
-        if r == len(lit_rows):  # last data row (1-indexed incl header)
+        if r == len(lit_rows):
             cell.set_facecolor("#d5f5e3"); cell.set_text_props(fontweight="bold")
 
-    # Bar 1 — EER (lower is better)
     ax1 = fig.add_subplot(gs[1, 0])
     eer_lbl = ["Ours\n(Combined)", "BehaveFormer\n(Aalto)", "BehaveFormer\n(HuMIdb)"]
     eer_val = [0.36, 1.80, 2.95]
@@ -165,7 +135,6 @@ def fig_literature():
     ax1.set_title("EER %  (lower = better)", fontsize=10, fontweight="bold")
     ax1.set_ylabel("EER (%)"); ax1.grid(axis="y", linestyle=":", alpha=0.5); ax1.set_axisbelow(True)
 
-    # Bar 2 — Accuracy (higher better)
     ax2 = fig.add_subplot(gs[1, 1])
     acc_lbl = ["Ours\n(Combined)", "MDPI mouse\n(1D-CNN bin.)", "MDPI mouse\n(ANN multi)"]
     acc_val = [98.8, 85.73, 92.48]
@@ -177,7 +146,6 @@ def fig_literature():
     ax2.set_title("Accuracy %  (higher = better)", fontsize=10, fontweight="bold")
     ax2.set_ylabel("Accuracy (%)"); ax2.grid(axis="y", linestyle=":", alpha=0.5); ax2.set_axisbelow(True)
 
-    # Bar 3 — F1 (higher better)
     ax3 = fig.add_subplot(gs[1, 2])
     f1_lbl = ["Ours\n(Combined)", "keyRecs\n(LGBM)"]
     f1_val = [95.2, 80.0]
@@ -198,17 +166,12 @@ def fig_literature():
     plt.savefig(out, dpi=200, bbox_inches="tight"); plt.close()
     print("wrote", out)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# FIGURE 4 — confusion matrices as 2x2 heatmaps (one per model)
-# ─────────────────────────────────────────────────────────────────────────────
 def fig_confusion():
     fig, axes = plt.subplots(1, 3, figsize=(13, 4.4))
     fig.suptitle("Confusion matrices — 70/30 split, test set n=160 (21 anomalies / 139 normal)",
                  fontsize=12, fontweight="bold")
     for ax, model in zip(axes, MODELS):
         tp, fn, fp, tn = CM[model]
-        # rows = actual (Normal, Anomaly); cols = predicted (Normal, Anomaly)
         mat = np.array([[tn, fp], [fn, tp]])
         ax.imshow(mat, cmap="Greens", vmin=0, vmax=mat.max())
         ax.set_title(model, fontsize=10, fontweight="bold")
@@ -219,7 +182,6 @@ def fig_confusion():
         for i in range(2):
             for j in range(2):
                 v = mat[i, j]
-                # white text on dark cells for readability
                 tc = "white" if v > mat.max() * 0.55 else "#1b2631"
                 ax.text(j, i, f"{labels[i][j]}\n{v}", ha="center", va="center",
                         fontsize=12, fontweight="bold", color=tc)
@@ -231,7 +193,6 @@ def fig_confusion():
     out = f"{OUTDIR}/confusion_matrices_70_30.png"
     plt.savefig(out, dpi=200, bbox_inches="tight"); plt.close()
     print("wrote", out)
-
 
 if __name__ == "__main__":
     fig_table()

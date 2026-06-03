@@ -1,7 +1,3 @@
-"""
-Dissertation evaluation script for the TabPFN behavioural anomaly detector.
-"""
-# Force UTF-8 stdout so emoji/math symbols don't crash on Windows cp1256 console
 import sys, io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 """
@@ -41,7 +37,7 @@ import pandas as pd
 from datetime import datetime
 
 import matplotlib
-matplotlib.use("Agg")  # headless — no GUI window
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from sklearn.model_selection import train_test_split
@@ -59,14 +55,8 @@ from models.tabpfn_model import MLModel
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-
 OUT = "evaluation_results"
 os.makedirs(OUT, exist_ok=True)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Feature groups — the two detection layers we want to compare head-to-head
-# ──────────────────────────────────────────────────────────────────────────────
 
 BEHAVIOURAL_FEATURES = [
     "AvgMouseSpeed", "StdMouseSpeed", "MouseMoveCount", "AvgMouseIdle",
@@ -83,20 +73,14 @@ ATTACK_FEATURES = [
 
 ALL_FEATURES = BEHAVIOURAL_FEATURES + ATTACK_FEATURES
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 1. Load data and generate labels (using the SAME logic as production)
-# ──────────────────────────────────────────────────────────────────────────────
-
 print("Loading data from BehaviorWindows...")
 df = get_data()
 print(f"  {len(df)} rows loaded\n")
 
-helper = MLModel.__new__(MLModel)   # bypass __init__ (skip TabPFN fit)
+helper = MLModel.__new__(MLModel)
 labels = MLModel.generate_labels(helper, df)
 df["label"] = labels
 
-# Need UserId for per-archetype grouping — pull it separately (db.get_data doesn't return it)
 import pyodbc
 conn = pyodbc.connect(
     "DRIVER={ODBC Driver 17 for SQL Server};"
@@ -112,18 +96,12 @@ X_full = df[ALL_FEATURES].values
 y = df["label"].values
 print(f"Class distribution: Normal={int(np.sum(y==0))}  Anomaly={int(np.sum(y==1))}\n")
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 2. Stratified 70/30 split — same seed across all experiments
-# ──────────────────────────────────────────────────────────────────────────────
-
 X_train_full, X_test_full, y_train, y_test, idx_train, idx_test = train_test_split(
     X_full, y, np.arange(len(y)),
     test_size=0.30, stratify=y, random_state=42
 )
 df_test = df.iloc[idx_test].reset_index(drop=True)
 
-# Mirror production cap. Apply BEFORE feature slicing so indices stay aligned.
 if len(X_train_full) > 50:
     X_train_full, _, y_train, train_keep_idx, _, _ = train_test_split(
         X_train_full, y_train, np.arange(len(y_train)),
@@ -135,20 +113,12 @@ else:
 print(f"Train: {len(X_train_full)} rows (capped at 50 like production)")
 print(f"Test:  {len(X_test_full)} rows\n")
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 3. Train three TabPFN models on three feature sets
-# ──────────────────────────────────────────────────────────────────────────────
-
 def slice_features(X, feature_list):
-    """Return X restricted to the columns named in feature_list."""
     cols = [ALL_FEATURES.index(f) for f in feature_list]
     return X[:, cols]
 
-
 def calibrate(p):
     return float(max(0.05, min(0.95, p)))
-
 
 def train_and_predict(feature_list, label):
     print(f"Training TabPFN on {label} ({len(feature_list)} features)...")
@@ -161,45 +131,30 @@ def train_and_predict(feature_list, label):
     raw = clf.predict_proba(Xte)[:, 1]
     return clf, raw, fit_time
 
-
 _, raw_beh, fit_beh = train_and_predict(BEHAVIOURAL_FEATURES, "behavioural only")
 _, raw_atk, fit_atk = train_and_predict(ATTACK_FEATURES,      "attack-signal only")
 clf_all, raw_all, fit_all = train_and_predict(ALL_FEATURES,   "combined")
 print()
 
-
 def to_binary(raw):
     p_clip = np.array([calibrate(p) for p in raw])
     return p_clip, (p_clip >= 0.5).astype(int)
-
 
 probs_beh, preds_beh = to_binary(raw_beh)
 probs_atk, preds_atk = to_binary(raw_atk)
 probs_all, preds_all = to_binary(raw_all)
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 4. Hybrid (combined + hard-rule floor) and Rules-only baseline
-# ──────────────────────────────────────────────────────────────────────────────
-
 def hard_floor(row_dict):
     return MLModel._hard_rules_floor(helper, row_dict)
 
-
 def rules_only_pred(row_dict):
     return 1 if hard_floor(row_dict) > 0 else 0
-
 
 test_dicts = df_test[ALL_FEATURES].to_dict(orient="records")
 probs_hybrid = np.array([calibrate(max(p, hard_floor(d)))
                          for p, d in zip(raw_all, test_dicts)])
 preds_hybrid = (probs_hybrid >= 0.5).astype(int)
 preds_rules  = np.array([rules_only_pred(d) for d in test_dicts])
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 5. Metrics helper
-# ──────────────────────────────────────────────────────────────────────────────
 
 def metrics(y_true, y_pred):
     p, r, f, _ = precision_recall_fscore_support(
@@ -212,7 +167,6 @@ def metrics(y_true, y_pred):
         "f1":        dict(normal=f[0], anomaly=f[1]),
         "macro_f1":  float(np.mean(f)),
     }
-
 
 m_beh    = metrics(y_test, preds_beh)
 m_atk    = metrics(y_test, preds_atk)
@@ -239,11 +193,6 @@ for name, m in [("Rules-only baseline", m_rules),
           f"macro-F1={m['macro_f1']:.3f}")
 print()
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 6. Three-way side-by-side confusion matrix
-# ──────────────────────────────────────────────────────────────────────────────
-
 def draw_cm(ax, y_true, y_pred, title):
     cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
     im = ax.imshow(cm, cmap="Blues")
@@ -259,7 +208,6 @@ def draw_cm(ax, y_true, y_pred, title):
                     fontsize=15, fontweight="bold")
     return cm
 
-
 fig, axes = plt.subplots(1, 3, figsize=(13, 4.2))
 cm_beh = draw_cm(axes[0], y_test, preds_beh,
                  "(a) Behavioural-only\n(mouse / keyboard biometrics)")
@@ -273,7 +221,6 @@ plt.tight_layout()
 plt.savefig(f"{OUT}/confusion_matrices_three_way.png", dpi=150)
 plt.close()
 
-# Also save the hybrid (with rule floor) and rules-only on their own
 fig, axes = plt.subplots(1, 2, figsize=(9, 4.2))
 cm_hybrid = draw_cm(axes[0], y_test, preds_hybrid,
                     "Hybrid (TabPFN + hard-rule floor)")
@@ -283,12 +230,6 @@ plt.tight_layout()
 plt.savefig(f"{OUT}/confusion_matrices_hybrid_vs_rules.png", dpi=150)
 plt.close()
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 7. Attack-pattern frequency chart (uses real DetectedPatterns strings)
-# ──────────────────────────────────────────────────────────────────────────────
-
-# Pull DetectedPatterns into the test frame
 conn = pyodbc.connect(
     "DRIVER={ODBC Driver 17 for SQL Server};"
     "SERVER=localhost\\SQLEXPRESS;"
@@ -302,18 +243,14 @@ conn.close()
 df_test = df_test.copy()
 df_test["DetectedPatterns"] = patterns_df.iloc[idx_test].reset_index(drop=True)["DetectedPatterns"]
 
-
 def category_of(pattern_str):
-    """Extract the [Category] prefix from a DetectedPatterns string."""
     if not isinstance(pattern_str, str) or not pattern_str.strip():
         return None
-    # Pattern looks like: "[SQL Injection] UNION SELECT in Input"
     if pattern_str.startswith("["):
         end = pattern_str.find("]")
         if end != -1:
             return pattern_str[1:end]
     return "Other"
-
 
 pattern_categories = df_test["DetectedPatterns"].apply(category_of).dropna()
 pattern_counts = pattern_categories.value_counts()
@@ -343,14 +280,8 @@ if len(pattern_counts) > 0:
 else:
     print("(no rows with DetectedPatterns landed in the test split)\n")
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 8. Per-attack-type breakdown (split malicious into sql/xss/paste/...)
-# ──────────────────────────────────────────────────────────────────────────────
-
 df_test["actual"]      = y_test
 df_test["pred_hybrid"] = preds_hybrid
-
 
 def archetype(row):
     uid = str(row["UserId"])
@@ -364,19 +295,16 @@ def archetype(row):
         return "mixed (bot+attack)"
 
     if uid.startswith("attacker-"):
-        # Split by what was detected
         if "SQL Injection" in pat:           return "malicious — sql"
         if "XSS" in pat:                     return "malicious — xss"
         if "Path Traversal" in pat:          return "malicious — path"
         if "Command Injection" in pat:       return "malicious — command"
         if "SSTI" in pat:                    return "malicious — ssti"
         if "XXE" in pat:                     return "malicious — xxe"
-        # No DetectedPatterns -> devtools or probe (distinguished by UnauthorizedAttempts)
         if row.get("UnauthorizedAttempts", 0) > 0:
             return "malicious — probe (challenge bypass)"
         return "malicious — devtools"
     return "unknown"
-
 
 df_test["archetype"] = df_test.apply(archetype, axis=1)
 
@@ -397,11 +325,6 @@ breakdown.to_csv(f"{OUT}/per_attack_breakdown.csv")
 print("=== PER-ARCHETYPE BREAKDOWN (Hybrid configuration) ===")
 print(breakdown.to_string())
 print()
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 9. ROC curve + AUC (compares the three feature sets)
-# ──────────────────────────────────────────────────────────────────────────────
 
 fpr_b, tpr_b, _ = roc_curve(y_test, probs_beh)
 fpr_a, tpr_a, _ = roc_curve(y_test, probs_atk)
@@ -430,11 +353,6 @@ plt.close()
 print(f"ROC-AUC: Behav={auc_b:.3f}  Attack={auc_a:.3f}  "
       f"Combined={auc_c:.3f}  Hybrid={auc_h:.3f}\n")
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 10. Calibration / reliability diagram (raw vs clipped)
-# ──────────────────────────────────────────────────────────────────────────────
-
 n_bins = min(5, max(2, len(y_test) // 5))
 frac_raw,  mean_raw  = calibration_curve(y_test, raw_all,    n_bins=n_bins, strategy="uniform")
 frac_clip, mean_clip = calibration_curve(y_test, probs_all,  n_bins=n_bins, strategy="uniform")
@@ -451,11 +369,6 @@ plt.grid(alpha=0.3)
 plt.tight_layout()
 plt.savefig(f"{OUT}/calibration_plot.png", dpi=150)
 plt.close()
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 11. Feature ablation — colour-coded by category
-# ──────────────────────────────────────────────────────────────────────────────
 
 print("Running feature ablation (one TabPFN retrain per feature)...")
 baseline_f1 = m_all["f1"]["anomaly"]
@@ -498,14 +411,8 @@ plt.savefig(f"{OUT}/feature_ablation.png", dpi=150)
 plt.close()
 print()
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 12. Latency timing
-# ──────────────────────────────────────────────────────────────────────────────
-
 print("Measuring inference latency on the combined model...")
 
-# Warm predict: 50 single-sample calls (mirrors per-snapshot scoring in production)
 single_times_ms = []
 for i in range(min(50, len(X_test_full))):
     sample = X_test_full[i:i+1]
@@ -513,7 +420,6 @@ for i in range(min(50, len(X_test_full))):
     clf_all.predict_proba(sample)
     single_times_ms.append((time.perf_counter() - t0) * 1000)
 
-# Batched: one call on the whole test set
 t0 = time.perf_counter()
 clf_all.predict_proba(X_test_full)
 batched_total_ms = (time.perf_counter() - t0) * 1000
@@ -531,7 +437,6 @@ print(f"  Batched predict ({len(X_test_full)} samples): {batched_total_ms:.1f} m
       f"= {per_sample_batched_ms:.2f} ms/sample")
 print()
 
-# Latency plot
 plt.figure(figsize=(7, 4))
 plt.hist(single_times_ms, bins=20, color="#34495e", edgecolor="white")
 plt.axvline(p50, color="#27ae60", linestyle="--", label=f"P50 = {p50:.0f} ms")
@@ -543,11 +448,6 @@ plt.legend()
 plt.tight_layout()
 plt.savefig(f"{OUT}/latency_distribution.png", dpi=150)
 plt.close()
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 13. Generate paste-ready dissertation markdown report
-# ──────────────────────────────────────────────────────────────────────────────
 
 def md_layer_table():
     rows = [
@@ -565,7 +465,6 @@ def md_layer_table():
                 f"{m['f1']['anomaly']:.3f} | {a:.3f} |\n")
     return out
 
-
 def md_config_table():
     rows = [
         ("Rules-only baseline", m_rules,  None),
@@ -581,14 +480,12 @@ def md_config_table():
                 f"{m['macro_f1']:.3f} | {a_str} |\n")
     return out
 
-
 def md_cm(cm, name):
     return (f"**{name}**\n\n"
             f"|              | Pred Normal | Pred Anomaly |\n"
             f"|--------------|-------------|--------------|\n"
             f"| **Actual Normal**  | {cm[0,0]} | {cm[0,1]} |\n"
             f"| **Actual Anomaly** | {cm[1,0]} | {cm[1,1]} |\n")
-
 
 def md_ablation_top(n=8):
     out = "| Feature dropped | Category | F1 without it | Δ vs baseline |\n|---|---|---|---|\n"
@@ -597,7 +494,6 @@ def md_ablation_top(n=8):
                 f"{r['f1_without']:.3f} | {r['delta']:+.3f} |\n")
     return out
 
-
 def md_patterns():
     if len(pattern_counts) == 0:
         return "*No rows containing DetectedPatterns landed in the test split.*"
@@ -605,7 +501,6 @@ def md_patterns():
     for cat, n in pattern_counts.items():
         out += f"| {cat} | {int(n)} |\n"
     return out
-
 
 report = f"""# Evaluation Results
 

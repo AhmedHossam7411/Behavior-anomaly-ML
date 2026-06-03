@@ -35,25 +35,12 @@ class MLModel:
         X = df[self.feature_names].values
         y = self.generate_labels(df)
 
-        # Cap at 50 with stratified sampling so both classes are always represented
         if len(X) > 50:
             X, _, y, _ = train_test_split(X, y, train_size=50, stratify=y, random_state=42)
 
         self.model.fit(X, y)
 
     def generate_labels(self, df):
-        """
-        Label a window as anomalous (1) only on a *definitive* malicious-intent signal —
-        an explicit attack action a legitimate user would not produce: a detected hacking
-        string, a suspicious paste, abnormal (fuzzing-length) input, repeated security-
-        challenge-bypass attempts, any DevTools activity (detected open, or at least one
-        DevTools shortcut), or a robotic-automation pattern. Everything else is Normal (0).
-
-        The previous loose population-relative rate thresholds (TypingRate/MouseMoveRate/
-        ClickRate vs the dataset mean) were removed: they over-flagged ordinary fast or
-        slow users, inflating the positive class to ~76%. Anomaly now sits at a realistic
-        rate and is defined by intent-bearing actions, not behavioural variance alone.
-        """
         y = []
         for _, row in df.iterrows():
             hacking   = row.get("HackingStringDetected", 0) == 1
@@ -69,7 +56,6 @@ class MLModel:
         return np.array(y)
 
     def _get(self, item, *keys, default=0):
-        """Try multiple key casings, return first match."""
         for k in keys:
             v = item.get(k)
             if v is not None:
@@ -80,11 +66,6 @@ class MLModel:
         return float(default)
 
     def _hard_rules_floor(self, item):
-        """
-        Return a confidence floor based on the same hard rules used in
-        generate_labels. TabPFN can only have been trained on limited data;
-        these rules guarantee the model never underpredicts clear signals.
-        """
         hacking   = self._get(item, "HackingStringDetected",  "hackingStringDetected")
         sus_paste = self._get(item, "SuspiciousPasteDetected","suspiciousPasteDetected")
         abnormal  = self._get(item, "AbnormalInputDetected",  "abnormalInputDetected")
@@ -95,19 +76,16 @@ class MLModel:
         typing    = self._get(item, "TypingRate",             "typingRate",    default=999)
         click_r   = self._get(item, "ClickRate",              "clickRate",     default=0)
 
-        # Definitive attack signals
         if hacking == 1 or sus_paste == 1 or abnormal == 1 or unauth > 2:
             return 0.88
 
-        # DevTools probing — open at all, or any inspect shortcut
         if dt_open == 1 or dt_count >= 1:
             return 0.78
 
-        # Robotic behavioural pattern
         if std_mouse < 0.05 and typing == 0.0 and click_r > 5:
             return 0.82
 
-        return 0.0   # no floor — let TabPFN decide
+        return 0.0
 
     def _prepare_input(self, data):
         if isinstance(data, list) and isinstance(data[0], list):
@@ -138,8 +116,6 @@ class MLModel:
         for i in range(len(probs)):
             tabpfn_prob = float(probs[i][1])
 
-            # Apply hard-rule floor so known anomaly patterns are never
-            # suppressed by TabPFN underfitting on limited training data
             if isinstance(data, list) and isinstance(data[i], dict):
                 floor = self._hard_rules_floor(data[i])
                 tabpfn_prob = max(tabpfn_prob, floor)
