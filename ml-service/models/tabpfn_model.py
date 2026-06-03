@@ -42,25 +42,30 @@ class MLModel:
         self.model.fit(X, y)
 
     def generate_labels(self, df):
+        """
+        Label a window as anomalous (1) only on a *definitive* malicious-intent signal —
+        an explicit attack action a legitimate user would not produce: a detected hacking
+        string, a suspicious paste, abnormal (fuzzing-length) input, repeated security-
+        challenge-bypass attempts, any DevTools activity (detected open, or at least one
+        DevTools shortcut), or a robotic-automation pattern. Everything else is Normal (0).
+
+        The previous loose population-relative rate thresholds (TypingRate/MouseMoveRate/
+        ClickRate vs the dataset mean) were removed: they over-flagged ordinary fast or
+        slow users, inflating the positive class to ~76%. Anomaly now sits at a realistic
+        rate and is defined by intent-bearing actions, not behavioural variance alone.
+        """
         y = []
         for _, row in df.iterrows():
-            if (
-                row.get("HackingStringDetected", 0) == 1 or
-                row.get("SuspiciousPasteDetected", 0) == 1 or
-                row.get("AbnormalInputDetected", 0) == 1 or
-                row.get("UnauthorizedAttempts", 0) > 2
-            ):
-                y.append(1)
-            elif (
-                row["TypingRate"] > df["TypingRate"].mean() * 1.5 or
-                row["MouseMoveRate"] < df["MouseMoveRate"].mean() * 0.5 or
-                row["ClickRate"] > df["ClickRate"].mean() * 2 or
-                row.get("DevToolsShortcutCount", 0) > 3 or
-                (row.get("DevToolsDetected", 0) == 1 and row.get("DevToolsShortcutCount", 0) > 0)
-            ):
-                y.append(1)
-            else:
-                y.append(0)
+            hacking   = row.get("HackingStringDetected", 0) == 1
+            sus_paste = row.get("SuspiciousPasteDetected", 0) == 1
+            abnormal  = row.get("AbnormalInputDetected", 0) == 1
+            unauth    = row.get("UnauthorizedAttempts", 0) > 2
+            dt_probe  = (row.get("DevToolsDetected", 0) == 1 or
+                         row.get("DevToolsShortcutCount", 0) >= 1)
+            robotic   = (row.get("StdMouseSpeed", 999) < 0.05 and
+                         row.get("TypingRate", 999) == 0.0 and
+                         row.get("ClickRate", 0) > 5)
+            y.append(1 if (hacking or sus_paste or abnormal or unauth or dt_probe or robotic) else 0)
         return np.array(y)
 
     def _get(self, item, *keys, default=0):
@@ -94,8 +99,8 @@ class MLModel:
         if hacking == 1 or sus_paste == 1 or abnormal == 1 or unauth > 2:
             return 0.88
 
-        # DevTools probing
-        if dt_count > 3 or (dt_open == 1 and dt_count > 0):
+        # DevTools probing — open at all, or any inspect shortcut
+        if dt_open == 1 or dt_count >= 1:
             return 0.78
 
         # Robotic behavioural pattern
